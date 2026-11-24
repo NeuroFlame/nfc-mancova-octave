@@ -1,4 +1,4 @@
-"""HTML report generator for nfc-mancova central aggregation results."""
+"""HTML report generator for nfc-mancova-octave central aggregation results."""
 
 import base64
 import glob as _glob

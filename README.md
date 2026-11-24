@@ -1,6 +1,8 @@
-# NeuroFLAME Computation: MANCOVA (nfc-mancova)
+# NeuroFLAME Computation: MANCOVA, Octave engine (nfc-mancova-octave)
 
 Federated MANCOVA (Multivariate Analysis of Covariance) with Group ICA for multi-site neuroimaging analysis. A NeuroFLAME port of [COINSTAC MANCOVA](https://github.com/trendscenter/coinstac-mancova).
+
+This is the GNU Octave-backed variant of [nfc-mancova](https://github.com/NeuroFlame/nfc-mancova): it runs GIFT's original interpreted `.m` source directly under Octave instead of a MATLAB-Compiler-built executable under MATLAB Runtime (MCR). MathWorks ships MCR only for linux/amd64 and macOS, never linux/arm64, so the MCR-backed computation cannot build natively for Apple Silicon or other arm64 hosts; this variant can, because Octave itself is a plain multi-arch package. The two repos are independent and published as separate images -- pick whichever matches your fleet, or run this one where arm64 native performance matters.
 
 ## Overview
 
@@ -61,19 +63,31 @@ Publishing production images uses `./dockerPush.sh` (a wrapper for
 `scripts/publish_computation_image.py`) with the image coordinates in
 `.neuroflame.json`.
 
-## MATLAB / GIFT Environment
+## Octave / GIFT Environment
 
-The computation requires the GIFT standalone toolbox and MATLAB Runtime (MCR).
+The computation requires GNU Octave (plus its `statistics` package) and
+GIFT's interpreted `.m` source tree -- no MATLAB or MATLAB Runtime involved.
 
 | Environment Variable | Description | Default |
 |---|---|---|
-| `GIFT_HOME` | Root of the GIFT toolbox install | `/app/groupicatv4.0b` |
-| `MCRROOT` / `MATLAB_RUNTIME` | Root of the MATLAB Runtime installation | `/usr/local/MATLAB/MATLAB_Runtime/v91` |
-| `MATLAB_CMD` | Command used by NiPype to launch the GIFT standalone runtime | `$GIFT_HOME/GroupICATv4.0b_standalone/run_groupica.sh $MCRROOT/` |
+| `GIFT_HOME` | Root of the GIFT toolbox source | `/app/groupicatv4.0b` |
+| `MATLAB_CMD` | Command used by NiPype (via `use_mcr=True`, kept as-is -- see `gift.py`) to launch GIFT's batch scripts | `octave-cli --no-gui --traditional` |
 
-Both Dockerfiles install MATLAB Runtime R2016b and copy the GIFT toolbox
-from `groupicatv4.0b/` at the repo root (not committed; see `.gitignore`), so
-that directory must exist before building.
+Both Dockerfiles install `octave`/`octave-statistics` from Debian's apt
+repos and copy GIFT's `icatb` source from `groupicatv4.0b/icatb` at the repo
+root (not committed; see `.gitignore`), so that directory must exist before
+building. `icatb` is put on Octave's path for every invocation via a line
+appended to `/etc/octaverc` at image build time, not via nipype's `paths`
+input -- GIFT's own `addpath` guards (`ismcc`/`isdeployed`) are MATLAB
+Compiler built-ins that Octave doesn't define.
+
+GIFT's vendored source needed a number of targeted compatibility patches
+to run correctly under Octave (shipped in [`octave_patches/`](octave_patches/)
+and copied in at image build time -- see the Dockerfiles for exact copy
+points), plus a solver-robustness improvement to the auto-mask threshold
+fit. **See [VALIDATION.md](VALIDATION.md)** for the full list of fixes and
+the validation results comparing this engine's output against the real
+MATLAB-Runtime-backed pipeline on identical data.
 
 ## Input Data
 

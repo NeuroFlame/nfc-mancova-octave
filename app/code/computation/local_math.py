@@ -426,7 +426,11 @@ def run_site_mancova(
                 threshdesc=parameters.get("threshdesc", "fdr"),
                 p_threshold=parameters.get("p_threshold", 0.05),
                 display_p_threshold=parameters.get("display_p_threshold", 0.05),
-                display_local_result_summary=True,
+                # GIFT's own slice-view plotting (icatb_orth_views.m /
+                # colorbar()) is redundant with report.py's HTML report, and
+                # hits a real Octave colorbar() bug ("PROP/VAL inputs must
+                # occur in pairs"). False skips that plotting entirely.
+                display_local_result_summary=False,
                 write_stats_info=0,
                 site_logger=logger,
             )

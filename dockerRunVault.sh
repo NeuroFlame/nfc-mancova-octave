@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run nfc-mancova with real GICA vault data.
+# Run nfc-mancova-octave with real GICA vault data.
 # By default uses 20-subject subset vaults (fast).
 # Set N_SUBJECTS=0 to use the full vaults (91 + 189 subjects).
 #
@@ -38,9 +38,8 @@ echo "site1 vault: $CMI_VAULT"
 echo "site2 vault: $TRENDS_VAULT"
 
 MSYS_NO_PATHCONV=1 docker run --rm -it \
-    --platform linux/amd64 \
     --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-    --name nfc-mancova-vault \
+    --name nfc-mancova-octave-vault \
     -v "$LOCAL_WORKSPACE:$REMOTE_WORKSPACE" \
     -v "$CMI_VAULT:$REMOTE_WORKSPACE/test_data/site1:ro" \
     -v "$CMI_VAULT:$CMI_MATLAB_PATH:ro" \
@@ -48,4 +47,4 @@ MSYS_NO_PATHCONV=1 docker run --rm -it \
     -v "$TRENDS_VAULT:$TRENDS_MATLAB_PATH:ro" \
     -w "$REMOTE_WORKSPACE" \
     -e "PARAMETERS_FILE_PATH=$REMOTE_WORKSPACE/test_data/server/vault_parameters.json" \
-    nfc-mancova:dev
+    nfc-mancova-octave:dev

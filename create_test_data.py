@@ -5,7 +5,7 @@ Generates:
   test_data/site2/  - 4 tiny NIfTI files + covariates.csv
   test_data/server/parameters.json  - MANCOVA params with skip_gica + no univariate tests
 
-Run inside the nfc-mancova:dev container (nibabel is installed there):
+Run inside the nfc-mancova-octave:dev container (nibabel is installed there):
   python3 /workspace/create_test_data.py
 """
 

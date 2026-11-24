@@ -1,6 +1,12 @@
 """Thin wrappers around GIFT's nipype interface for Group ICA and MANCOVA.
 
-These require the MATLAB Runtime and GIFT toolbox installed in the image.
+These require GNU Octave (plus GIFT's interpreted .m source tree) installed
+in the image -- not MATLAB or MATLAB Runtime. nipype's MatlabCommand still
+runs with use_mcr=True below: that mode simply shells out to MATLAB_CMD with
+the generated batch script's path as its sole positional argument, no
+-nodesktop/-nosplash/-r flags, which is exactly the shape `octave-cli
+<flags> <script.m>` needs -- so pointing MATLAB_CMD at octave-cli requires no
+changes to nipype's own script-generation code.
 """
 
 import importlib
@@ -15,14 +21,7 @@ resample_from_to = None
 gift = None
 
 GIFT_HOME = os.environ.get("GIFT_HOME", "/app/groupicatv4.0b")
-MCR_ROOT = os.environ.get(
-    "MCRROOT",
-    os.environ.get("MATLAB_RUNTIME", "/usr/local/MATLAB/MATLAB_Runtime/v91"),
-)
-MATLAB_CMD = os.environ.get(
-    "MATLAB_CMD",
-    f"{GIFT_HOME}/GroupICATv4.0b_standalone/run_groupica.sh {MCR_ROOT}/",
-)
+MATLAB_CMD = os.environ.get("MATLAB_CMD", "octave-cli --no-gui --traditional")
 
 
 def _load_gift_modules():
@@ -90,7 +89,11 @@ def _run_with_logging(
 
 
 DEFAULT_THRESHDESC = "fdr"
-DEFAULT_DISPLAY_RESULTS = 1
+# GICA's own report_generator/publish() call is skipped (0, not 1): this
+# computation already builds its own HTML report (report.py), and
+# publish() rejects function files under Octave ("only script files can be
+# published").
+DEFAULT_DISPLAY_RESULTS = 0
 DEFAULT_FEATURES = []
 DEFAULT_COVARIATES = {}
 DEFAULT_INTERACTIONS = []

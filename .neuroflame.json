@@ -8,10 +8,10 @@
     "boilerplateVersion": "0.1.0"
   },
   "image": {
-    "title": "nfc-mancova",
-    "repository": "coinstacteam/nfc-mancova",
+    "title": "nfc-mancova-octave",
+    "repository": "coinstacteam/nfc-mancova-octave",
     "floatingTag": "latest",
     "tagPrefix": "",
-    "source": "https://github.com/NeuroFlame/nfc-mancova"
+    "source": "https://github.com/NeuroFlame/nfc-mancova-octave"
   }
 }

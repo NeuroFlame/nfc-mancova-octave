@@ -8,11 +8,11 @@ REMOTE_WORKSPACE='/workspace'
 echo "Using LOCAL_WORKSPACE: $LOCAL_WORKSPACE"
 echo "Using REMOTE_WORKSPACE: $REMOTE_WORKSPACE"
 
-# Run Docker, disabling path conversion on Windows
+# Run Docker, disabling path conversion on Windows. Octave is a plain
+# multi-arch package, so no --platform override is needed here.
 MSYS_NO_PATHCONV=1 docker run --rm -it \
-    --platform linux/amd64 \
     --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-    --name nfc-mancova-dev \
+    --name nfc-mancova-octave-dev \
     -v "$LOCAL_WORKSPACE:$REMOTE_WORKSPACE" \
     -w "$REMOTE_WORKSPACE" \
-    nfc-mancova:dev
+    nfc-mancova-octave:dev
