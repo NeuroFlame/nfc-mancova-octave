@@ -96,7 +96,10 @@ rm -rf "$RESULT_ROOT"
 if [[ $BUILD_IMAGE -eq 1 ]]; then
     echo
     echo "Building Docker image '$IMAGE_NAME'..."
-    docker build --platform linux/amd64 -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "$LOCAL_WORKSPACE"
+    # Octave is a plain multi-arch package (unlike the MCR-backed sibling
+    # computation), so build natively for whatever platform Docker is
+    # running on instead of forcing linux/amd64 and paying for emulation.
+    docker build -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "$LOCAL_WORKSPACE"
 fi
 
 echo

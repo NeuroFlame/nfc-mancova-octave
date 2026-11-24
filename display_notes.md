@@ -1,10 +1,12 @@
-**Source code:** [https://github.com/NeuroFlame/nfc-mancova](https://github.com/NeuroFlame/nfc-mancova)
+**Source code:** [https://github.com/NeuroFlame/nfc-mancova-octave](https://github.com/NeuroFlame/nfc-mancova-octave)
 
 &nbsp;
 
 ### Overview
 
 Federated MANCOVA (Multivariate Analysis of Covariance) with Group ICA enables multi-site neuroimaging analysis without sharing raw data. Each site runs Group ICA locally using the GIFT toolbox, then statistical results are aggregated at the central node to produce global multivariate and univariate analyses across all sites.
+
+This is the GNU Octave-backed variant of [nfc-mancova](https://github.com/NeuroFlame/nfc-mancova): GIFT's original interpreted `.m` source runs directly under Octave instead of a MATLAB-Compiler-built executable under MATLAB Runtime, which is what unblocks native arm64 support. See [VALIDATION.md](VALIDATION.md) for the compatibility fixes this required and the validation against the MATLAB-Runtime-backed pipeline. References below to "MATLAB" describe GIFT's file formats and toolbox heritage (e.g. MATLAB 7.3/.mat files), not the runtime actually executing it.
 
 This computation is a NeuroFLAME port of the [COINSTAC MANCOVA](https://github.com/trendscenter/coinstac-mancova) pipeline. The federated design mirrors the original: edge nodes run Group ICA and local univariate preprocessing, the central node aggregates covariates and runs global MANCOVA.
 

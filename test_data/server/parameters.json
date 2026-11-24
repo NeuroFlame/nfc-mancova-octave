@@ -4,7 +4,7 @@
   "scica_template": "/workspace/app/local_data/NeuroMark.nii",
   "mask": "/workspace/app/local_data/mask.nii",
   "TR": 2,
-  "features": ["fnc correlations", "timecourses spectra"],
+  "features": ["spatial maps"],
   "common_timepoints": false,
   "numOfPCs": [5, 5, 5],
   "univariate_test_list": [
@@ -31,6 +31,6 @@
   "image_values": "positive",
   "threshdesc": "none",
   "skip_gica": false,
-  "run_mancova": false,
-  "run_univariate_tests": true
+  "run_mancova": true,
+  "run_univariate_tests": false
 }

@@ -1,58 +1,28 @@
+# --- Build stage: compile the 3 SPM8 MEX functions MATLAB ships pre-built
+# (as .mexa64/.mexmaci64 etc, right beside the .m stubs) but that have no
+# Octave or arm64 equivalent -- see octave_patches/build_spm_mex.sh for the
+# two real 64-bit MEX API fixes this needed and why.
+FROM debian:bookworm AS spm-mex-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git gcc octave-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch r6313 https://github.com/spm/spm8.git /spm8-src
+COPY ./octave_patches/build_spm_mex.sh /build_spm_mex.sh
+RUN chmod +x /build_spm_mex.sh && /build_spm_mex.sh /spm8-src/src /spm_mex /spm_mex_private
+
 FROM python:3.11-bookworm
 
-# --- MATLAB Runtime R2016b + GIFT standalone (computation-specific) ---
-ENV MCRROOT=/usr/local/MATLAB/MATLAB_Runtime/v91
-ENV MATLAB_RUNTIME=${MCRROOT}
-ENV MCR_CACHE_ROOT=/tmp/mcrcache
-
+# --- GNU Octave + Octave Forge packages (computation-specific) ---
+# Replaces MATLAB Runtime entirely -- no architecture-locked MCR install,
+# no MCR_ROOT/MATLAB_RUNTIME plumbing. Octave is a plain multi-arch apt
+# package, which is what unblocks native arm64 for this computation.
 RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    unzip \
-    xz-utils \
-    libx11-dev \
-    libxcomposite-dev \
-    libxcursor-dev \
-    libxdamage-dev \
-    libxext-dev \
-    libxfixes-dev \
-    libxft-dev \
-    libxi-dev \
-    libxrandr-dev \
-    libxt-dev \
-    libxtst-dev \
-    libxxf86vm-dev \
-    libasound2-dev \
-    libatk1.0-dev \
-    libcairo2-dev \
-    libsndfile1-dev \
-    libxcb1-dev \
-    libxslt-dev \
-    libgtk-3-dev \
-    libxrender1 \
-    libxt6 \
-    libsm6 \
-    libxi6 \
-    libxmu6 \
-    libxinerama1 \
-    libglu1-mesa \
-    libgl1 \
+    octave \
+    octave-statistics \
+    octave-signal \
+    octave-optim \
     && rm -rf /var/lib/apt/lists/*
-
-RUN mkdir /tmp/mcr_installer && \
-    cd /tmp/mcr_installer && \
-    wget -q https://ssd.mathworks.com/supportfiles/downloads/R2016b/deployment_files/R2016b/installers/glnxa64/MCR_R2016b_glnxa64_installer.zip && \
-    unzip -q MCR_R2016b_glnxa64_installer.zip && \
-    ./install -mode silent -agreeToLicense yes && \
-    rm -rf /tmp/mcr_installer
-
-# MCR R2016b bundles FreeType 2.6, which lacks FT_Done_MM_Var needed by the
-# system libfontconfig; remove it so the distribution's FreeType is used.
-RUN rm -f ${MCRROOT}/bin/glnxa64/libfreetype.so.6 \
-          ${MCRROOT}/bin/glnxa64/libfreetype.so.6.11.1
-
-RUN mkdir -p /tmp/mcrcache
-# --- end MATLAB Runtime ---
+# --- end Octave ---
 
 RUN python3 -m pip install -U pip
 RUN python3 -m pip install -U setuptools
@@ -66,13 +36,113 @@ RUN python3 -m pip install -r /workspace/requirements.txt
 
 # --- GIFT toolbox and its nipype interface (computation-specific) ---
 COPY ./groupicatv4.0b/icatb/nipype-0.10.0/nipype/interfaces/gift /usr/local/lib/python3.11/site-packages/nipype/interfaces/gift
-COPY ./groupicatv4.0b /app/groupicatv4.0b
+COPY ./groupicatv4.0b/icatb /app/groupicatv4.0b/icatb
 
-# Pre-warm the MCR cache so the first real GIFT call doesn't pay cold-start cost
-RUN (timeout 20s /app/groupicatv4.0b/GroupICATv4.0b_standalone/run_groupica.sh ${MCRROOT}/; exit 0)
+# A handful of targeted compatibility fixes to GIFT's vendored source,
+# confirmed by direct reproduction of each real failure under Octave (see
+# VALIDATION.md for the full list and rationale). sed-based because each is
+# a narrow, single-line/single-pattern fix; the multi-line logic changes
+# below are shipped as full-file replacements from octave_patches/ instead.
+
+# ICASSO's own rindex.m shadows Octave's built-in rindex(), which Octave's
+# own fileparts.m depends on internally.
+RUN sed -i 's/\<rindex\>/icasso_rindex/g' \
+    /app/groupicatv4.0b/icatb/src/toolbox/icasso122/rindex.m \
+    /app/groupicatv4.0b/icatb/src/toolbox/icasso122/icassoCluster.m && \
+    mv /app/groupicatv4.0b/icatb/src/toolbox/icasso122/rindex.m \
+       /app/groupicatv4.0b/icatb/src/toolbox/icasso122/icasso_rindex.m
+
+# icatb_OptionsWindow (a GUI dialog always built invisible, used purely to
+# repackage feature_params data) hits 3 separate Octave/uicontrol bugs in a
+# row; bypassed with a pure-data equivalent that reads the same struct
+# fields directly instead of building real widgets and reading them back.
+RUN sed -i "s/out = icatb_OptionsWindow(feature_params.inputParameters, feature_params.defaults, 'off', 'title', 'Feature Options');/[out.results, out.inputParameters] = icatb_results_from_params(feature_params.inputParameters);/" \
+    /app/groupicatv4.0b/icatb/src/icatb_mancovan_files/icatb_mancovan_batch.m
+
+# icatb_getGraphics.m sets a renderer combo Octave's figure() rejects
+# outright, even for invisible figures.
+RUN sed -i "s/'Renderer', 'zbuffer', 'RendererMode' , 'manual', //" \
+    /app/groupicatv4.0b/icatb/src/icatb_display_functions/icatb_getGraphics.m
+
+# ENFORCE_MAT_FILE_VER='-v7.3' is set unconditionally in icatb_defaults.m;
+# Octave's save() can't write v7.3 (HDF5-backed) .mat files.
+RUN sed -i "s/ENFORCE_MAT_FILE_VER = '-v7.3';/ENFORCE_MAT_FILE_VER = '';/" \
+    /app/groupicatv4.0b/icatb/src/icatb_defaults.m
+
+# `do` as a MATLAB variable name collides with Octave's do-until keyword.
+RUN sed -i 's/\<do\>/do_dims/g' \
+    /app/groupicatv4.0b/icatb/src/icatb_spm8_files/@icatb_file_array/subsref.m \
+    /app/groupicatv4.0b/icatb/src/icatb_spm8_files/@icatb_file_array/subsasgn.m
+
+# icatb_eval_script.m's non-deployed branch loads batch files via cd + bare
+# -name eval(), which breaks on hyphenated filenames.
+COPY ./octave_patches/icatb_eval_script.m /app/groupicatv4.0b/icatb/src/icatb_helper_functions/icatb_eval_script.m
+
+# icatb_save.m is GIFT's own universal save() wrapper, used across the
+# whole codebase. Octave's save() cannot serialize a function handle at
+# all; GIFT's GUI code attaches real callback handles to structs that
+# eventually get saved wholesale. Patch the one shared save wrapper to
+# sanitize every variable it's asked to save, rather than chasing every
+# individual struct that might carry a callback somewhere in its tree --
+# see octave_patches/compat/icatb_strip_function_handles.m.
+COPY ./octave_patches/icatb_save.m /app/groupicatv4.0b/icatb/src/icatb_helper_functions/icatb_save.m
+
+# icatb_ggmix.m is the Gaussian+2-Gamma mixture density GIFT fits (via
+# lsqcurvefit) to auto-determine the default spatial-mask significance
+# threshold. Two separate numerical issues, both confirmed by fitting this
+# to real GICA tmap data with Octave's bounded lsqcurvefit: (1) the
+# original normalizing constant gamma(shape)*scale^shape overflows to Inf
+# for large shape/scale values -- rewritten in log-space; (2) a gamma
+# component's scale parameter is bounded below at exactly 0, where the
+# density is itself singular -- floored at a tiny epsilon for the density
+# evaluation.
+COPY ./octave_patches/icatb_ggmix.m /app/groupicatv4.0b/icatb/src/icatb_mancovan_files/icatb_ggmix.m
+
+# icatb_fitggmix.m calls icatb_ggmix.m above via lsqcurvefit to fit the
+# mask threshold. That fit is genuinely non-convex, and the validation
+# comparison against the real MATLAB/MCR pipeline (see VALIDATION.md) found
+# Octave's solver reliably converging -- not truncating early -- but to a
+# different local optimum than MATLAB's for some components, affecting
+# only the auto-threshold voxel mask (per-voxel univariate stats were
+# unaffected). Multi-start from a small, deterministic (not random, so
+# results stay reproducible across federated sites) grid of starting
+# points, keeping the lowest-residual fit, narrows that gap somewhat.
+COPY ./octave_patches/icatb_fitggmix.m /app/groupicatv4.0b/icatb/src/icatb_mancovan_files/icatb_fitggmix.m
+
+# GIFT also calls a handful of legacy MATLAB functions Octave never
+# implemented at all (e.g. str2mat -- see https://www.octave.org/missing.html),
+# and needs isdeployed/ismcc forced to true (Octave has no "deployed"
+# concept, and several of GIFT's own code paths only take their robust
+# branch when isdeployed is true). Ship small compatibility shims rather
+# than patching GIFT's own source for these.
+COPY ./octave_patches/compat /app/octave_compat
+
+# The 3 SPM8 MEX functions compiled in the spm-mex-builder stage above.
+# icatb_spm_sample_vol/icatb_spm_slice_vol/icatb_spm_bwlabel dispatch by
+# filename (MEX has no dispatch-by-symbol), so they go on the general
+# Octave path; mat2file/file2mat are MATLAB "private" class functions
+# resolved from @icatb_file_array/private/ specifically, not the general
+# path.
+COPY --from=spm-mex-builder /spm_mex /app/octave_compat
+COPY --from=spm-mex-builder /spm_mex_private /app/groupicatv4.0b/icatb/src/icatb_spm8_files/@icatb_file_array/private
+
+# icatb is put on Octave's path for every invocation via /etc/octaverc,
+# not nipype's `paths` input -- GIFT's own addpath guards (ismcc/
+# isdeployed) are MATLAB Compiler built-ins Octave doesn't define, which
+# is why those are overridden above instead. addpath() prepends by
+# default, so icatb's genpath must come first and octave_compat second,
+# or the compat shims won't shadow icatb's own .m stubs of the same name.
+RUN { \
+      echo "pkg load statistics;"; \
+      echo "pkg load signal;"; \
+      echo "pkg load optim;"; \
+      echo "addpath(genpath('/app/groupicatv4.0b/icatb'));"; \
+      echo "addpath('/app/octave_compat');"; \
+    } >> /etc/octaverc
 
 ENV GIFT_HOME=/app/groupicatv4.0b
-ENV MATLAB_CMD="${GIFT_HOME}/GroupICATv4.0b_standalone/run_groupica.sh ${MATLAB_RUNTIME}/"
+ENV MATLAB_CMD="octave-cli --no-gui --traditional"
+ENV QT_QPA_PLATFORM=offscreen
 # --- end GIFT ---
 
 ENV PYTHONPATH=/workspace/app/code/
