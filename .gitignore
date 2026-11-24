@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.venv/
+.DS_Store
+.claude/
+simulator_workspace/
+test_output/
+poc-workspace/
+job/
+# GIFT toolbox — installed at container build time, not committed
+groupicatv4.0b/
+# Pre-computed GICA outputs seeded into test_data for skip_gica tests (~90MB each)
+test_data/site*/coinstac-gica/
