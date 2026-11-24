@@ -124,6 +124,41 @@ tuning (tolerances, starting points) resolves. Given univariate
 significance is already unaffected by this divergence, further chasing
 exact mask agreement was judged lower-value than the effort required.
 
+### Follow-up attempt: log-reparametrization + wider multi-start (not landed)
+
+Tried two further changes together, on the theory that the solver's
+internal step scaling near a `[0, Inf)` bound (the gauss sigma and both
+gammas' shape/scale parameters are all bounded that way) could itself be
+why Octave's and MATLAB's solvers diverge: (1) fit `log(sigma)`,
+`log(alpha)`, `log(beta)` instead of the raw bounded values, making the
+problem effectively unconstrained for those 5 parameters, and (2) widen
+the multi-start grid from 5 to 30 deterministic starting points.
+
+| Metric (both sites, 106 components) | Single-start | 5-point multi-start (landed) | Log-reparam + 30-point multi-start |
+|---|---|---|---|
+| Mean Jaccard overlap | 0.8883 | **0.8919** | 0.8793 |
+| Components below 0.90 overlap | 42 | **39** | 43 |
+| Worst-case Jaccard | 0.4651 | 0.4651 | **0.2824** |
+
+This made things worse on every metric, not better -- the worst case
+dropped from 0.465 to 0.282. The likely reason: MATLAB's own solver is
+also just a local optimizer, and its specific result isn't necessarily
+the global optimum of this non-convex objective either, just *a*
+particular local optimum of its own trust-region implementation. A
+change that searches more thoroughly and finds a genuinely lower-residual
+fit (which both changes here do, by construction) has no reason to land
+on the *same* optimum MATLAB happens to find -- it's at least as likely
+to converge to a third, different one, which is what happened. "Better
+optimization" and "matches MATLAB's specific local optimum" are not the
+same objective, and only the second one is what the Jaccard-overlap
+metric actually rewards.
+
+Not landed; kept here as a record so this specific direction isn't
+retried from scratch later. The 5-point multi-start above remains the
+best result found and is treated as the practical ceiling for this
+divergence absent a much larger undertaking (e.g. reimplementing
+MATLAB's trust-region-reflective step logic itself).
+
 ## Reproducing this validation
 
 1. Build both engines' dev images (`./run_local_simulation.sh site1,site2`
